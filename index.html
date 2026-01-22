@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>图片评分实验</title>
+    <script src="jspsych/dist/jspsych.js"></script>
+    <script src="jspsych/dist/plugin-html-keyboard-response.js"></script>
+    <script src="jspsych/dist/plugin-image-button-response.js"></script>
+    <script src="jspsych/dist/plugin-preload.js"></script>
+    <script src="jspsych/dist/plugin-fullscreen.js"></script>
+    <link href="jspsych/dist/jspsych.css" rel="stylesheet" type="text/css" />
+    <style>
+        .jspsych-btn {
+            font-family: SimSun, 宋体, serif !important;
+            font-size: 24px !important;
+            color: black !important;
+            background-color: white !important;
+            border: 2px solid black !important;
+            padding: 15px 25px !important;
+            margin: 8px !important;
+            cursor: pointer !important;
+        }
+        .jspsych-btn:hover {
+            background-color: #e0e0e0 !important;
+        }
+        .fullscreen-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        /* 问卷样式 */
+        .survey-container {
+            font-family: SimSun, 宋体, serif;
+            max-width: 700px;
+            margin: 0 auto;
+            text-align: left;
+            padding: 20px;
+        }
+        .survey-container h2 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .survey-container label {
+            display: block;
+            margin: 15px 0 5px 0;
+            font-size: 18px;
+        }
+        .survey-container input[type="text"],
+        .survey-container input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .survey-container select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .submit-btn {
+            display: block;
+            width: 200px;
+            margin: 30px auto;
+            padding: 15px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .submit-btn:hover {
+            background-color: #45a049;
+        }
+        /* BIQ问卷样式 */
+        .biq-container {
+            font-family: SimSun, 宋体, serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .biq-question {
+            margin-bottom: 30px;
+        }
+        .biq-question h3 {
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        .biq-options {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+        }
+        .biq-option {
+            text-align: center;
+            cursor: pointer;
+            padding: 15px 20px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            min-width: 100px;
+            transition: all 0.2s;
+        }
+        .biq-option:hover {
+            background-color: #f0f0f0;
+        }
+        .biq-option.selected {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        .biq-option .score {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .biq-option .label {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body></body>
+<script>
+    /* ========== 全局变量 ========== */
+    let selected_images = [];
+    let current_image_index = 0;
+    let participant_id = '';
+
+    /* ========== 初始化 jsPsych ========== */
+    const jsPsych = initJsPsych({
+        override_safe_mode: true,
+        on_finish: function() {
+            // 以编号命名下载数据
+            const data = jsPsych.data.get().csv();
+            const blob = new Blob([data], {type: 'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = participant_id + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    });
+
+    /* ========== 生成50张图片的刺激列表 ========== */
+    let face_stimuli = [];
+    for (let i = 1; i <= 50; i++) {
+        face_stimuli.push({
+            stimulus: 'stimuli/face' + i + '.png',
+            face_id: i
+        });
+    }
+
+    /* ========== 预加载所有图片 ========== */
+    let all_images = face_stimuli.map(s => s.stimulus);
+    all_images.push('stimuli/picture1.png');
+    all_images.push('stimuli/picture2.png');
+    all_images.push('stimuli/picture3.png');
+    all_images.push('stimuli/picture4.png');
+    all_images.push('stimuli/picture5.png');
+    all_images.push('stimuli/picture6.png');
+
+    const preload = {
+        type: jsPsychPreload,
+        images: all_images,
+        message: '正在加载图片，请稍候...'
+    };
+
+    /* ========== 开头问卷 ========== */
+    const intro_survey = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="survey-container">
+                <h2>基本信息调查</h2>
+                <form id="intro-form">
+                    <label for="participant_id">编号：</label>
+                    <input type="text" id="participant_id" name="participant_id" required>
+                    
+                    <label for="age">年龄：</label>
+                    <input type="number" id="age" name="age" min="1" max="120" required>
+                    
+                    <label for="native_language">母语：</label>
+                    <input type="text" id="native_language" name="native_language" required>
+                    
+                    <label for="second_language">第二语言：</label>
+                    <input type="text" id="second_language" name="second_language" placeholder="如无请填"无"">
+                    
+                    <label for="heterosexual">是否为异性恋：</label>
+                    <select id="heterosexual" name="heterosexual" required>
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                    
+                    <label for="height">身高（厘米）：</label>
+                    <input type="number" id="height" name="height" min="50" max="250" required>
+                    
+                    <label for="speech_hearing">是否有言语或听力障碍史：</label>
+                    <select id="speech_hearing" name="speech_hearing" required>
+                        <option value="">请选择</option>
+                        <option value="无">无</option>
+                        <option value="有">有</option>
+                    </select>
+                    
+                    <label for="putonghua_level">普通话水平证书：</label>
+                    <select id="putonghua_level" name="putonghua_level" required>
+                        <option value="">请选择</option>
+                        <option value="二甲">二级甲等</option>
+                        <option value="一乙">一级乙等</option>
+                        <option value="一甲">一级甲等</option>
+                    </select>
+                    
+                    <button type="submit" class="submit-btn">提交并继续</button>
+                </form>
+                <p style="text-align: center; color: #666; margin-top: 20px;">填写完成后点击"提交并继续"</p>
+            </div>
+        `,
+        choices: "NO_KEYS",
+        on_load: function() {
+            document.getElementById('intro-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // 获取表单数据
+                participant_id = document.getElementById('participant_id').value;
+                const age = document.getElementById('age').value;
+                const native_language = document.getElementById('native_language').value;
+                const second_language = document.getElementById('second_language').value || '无';
+                const heterosexual = document.getElementById('heterosexual').value;
+                const height = document.getElementById('height').value;
+                const speech_hearing = document.getElementById('speech_hearing').value;
+                const putonghua_level = document.getElementById('putonghua_level').value;
+                
+                // 保存到jsPsych数据
+                jsPsych.data.addProperties({
+                    participant_id: participant_id,
+                    age: age,
+                    native_language: native_language,
+                    second_language: second_language,
+                    heterosexual: heterosexual,
+                    height_cm: height,
+                    speech_hearing_impairment: speech_hearing,
+                    putonghua_level: putonghua_level
+                });
+                
+                jsPsych.finishTrial();
+            });
+        }
+    };
+
+    /* ========== 问卷完成提示（按空格继续） ========== */
+    const survey_complete = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div style="font-family: SimSun, 宋体, serif; text-align: center;">
+                <h2>基本信息已记录</h2>
+                <p style="font-size: 18px;">按空格键开始实验</p>
+            </div>
+        `,
+        choices: [' ']
+    };
+
+    /* ========== picture1.png 全屏 ========== */
+    const picture1_screen = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="fullscreen-bg" style="background-image: url('stimuli/picture1.png');"></div>
+        `,
+        choices: [' ']
+    };
+
+    /* ========== 第一阶段：评分 ========== */
+    let presentation_order = 0;
+
+    const rating_trial = {
+        type: jsPsychImageButtonResponse,
+        stimulus: jsPsych.timelineVariable('stimulus'),
+        stimulus_height: 400,
+        choices: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+        prompt: '<p style="font-family: SimSun, 宋体, serif; font-size: 20px; color: black;">请对这张图片进行评分（1-10分）</p>',
+        data: {
+            task: 'rating',
+            face_id: jsPsych.timelineVariable('face_id'),
+            image_path: jsPsych.timelineVariable('stimulus')
+        },
+        on_finish: function(data) {
+            data.rating = data.response + 1;
+            presentation_order++;
+            data.presentation_order = presentation_order;
+        }
+    };
+
+    const rating_procedure = {
+        timeline: [rating_trial],
+        timeline_variables: face_stimuli,
+        randomize_order: true
+    };
+
+    /* ========== picture2.png 全屏 ========== */
+    const picture2_screen = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="fullscreen-bg" style="background-image: url('stimuli/picture2.png');"></div>
+        `,
+        choices: [' '],
+        on_finish: function() {
+            const rating_data = jsPsych.data.get().filter({task: 'rating'}).values();
+            
+            let data_for_top = [...rating_data];
+            
+            data_for_top.sort((a, b) => {
+                if (b.rating !== a.rating) return b.rating - a.rating;
+                return b.presentation_order - a.presentation_order;
+            });
+            const top5 = data_for_top.slice(0, 5);
+            
+            const top5_ids = new Set(top5.map(d => d.face_id));
+            const remaining = rating_data.filter(d => !top5_ids.has(d.face_id));
+            remaining.sort((a, b) => {
+                if (a.rating !== b.rating) return a.rating - b.rating;
+                return b.presentation_order - a.presentation_order;
+            });
+            const bottom5 = remaining.slice(0, 5);
+            
+            // 10张图片，每张出现3次
+            const base_images = [...top5, ...bottom5];
+            
+            // 第一轮：随机打乱10张图片的顺序
+            function shuffleArray(arr) {
+                let shuffled = [...arr];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                return shuffled;
+            }
+            
+            const round1_order = shuffleArray(base_images);
+            
+            // 按轮次呈现：第一轮随机顺序，第二轮和第三轮严格对应第一轮顺序
+            let all_30_images = [];
+            for (let round = 1; round <= 3; round++) {
+                round1_order.forEach(img => {
+                    all_30_images.push({
+                        ...img,
+                        round: round
+                    });
+                });
+            }
+            
+            selected_images = all_30_images;
+            current_image_index = 0;
+            
+            jsPsych.data.addProperties({
+                top5_face_ids: top5.map(d => d.face_id).join(','),
+                bottom5_face_ids: bottom5.map(d => d.face_id).join(','),
+                top5_ratings: top5.map(d => d.rating).join(','),
+                bottom5_ratings: bottom5.map(d => d.rating).join(','),
+                total_phase2_trials: selected_images.length,
+                round1_presentation_order: round1_order.map(d => d.face_id).join(',')
+            });
+            
+            console.log('Phase 2: Total images to show:', selected_images.length);
+        }
+    };
+
+    /* ========== 第二阶段：面部照片在屏幕正中间，picture6为背景（30次展示） ========== */
+    const show_face_on_background = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: function() {
+            const img_data = selected_images[current_image_index];
+            return `
+                <div class="fullscreen-bg" style="background-image: url('stimuli/picture6.png');">
+                    <img src="${img_data.image_path}" 
+                         style="position: absolute; left: 50%; top: 50%; 
+                                transform: translate(-50%, -50%); height: 400px;">
+                </div>
+            `;
+        },
+        choices: [' '],
+        data: {
+            task: 'show_selected'
+        },
+        on_finish: function(data) {
+            const img_data = selected_images[current_image_index];
+            data.shown_face_id = img_data.face_id;
+            data.shown_round = img_data.round;
+            data.trial_number = current_image_index + 1;
+            current_image_index++;
+        }
+    };
+
+    /* ========== picture4.png 全屏间隔 ========== */
+    const picture4_interval = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="fullscreen-bg" style="background-image: url('stimuli/picture4.png');"></div>
+        `,
+        choices: [' ']
+    };
+
+    const picture4_conditional = {
+        timeline: [picture4_interval],
+        conditional_function: function() {
+            return current_image_index < selected_images.length;
+        }
+    };
+
+    const phase2_loop = {
+        timeline: [show_face_on_background, picture4_conditional],
+        loop_function: function() {
+            return current_image_index < selected_images.length;
+        }
+    };
+
+    /* ========== picture5.png 全屏（BIQ问卷前） ========== */
+    const picture5_screen = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="fullscreen-bg" style="background-image: url('stimuli/picture5.png');"></div>
+        `,
+        choices: [' ']
+    };
+
+    /* ========== BIQ问卷数据 ========== */
+    const biq_questions = [
+        { num: 1, text: "我理想的身高是：", importance: "理想身高对您有多重要？" },
+        { num: 2, text: "我理想的肤色是：", importance: "理想肤色对您有多重要？" },
+        { num: 3, text: "我理想的头发质地和浓密度是：", importance: "理想的头发质地和浓密度对您有多重要？" },
+        { num: 4, text: "我理想的面部特征（眼睛、鼻子、耳朵、脸型）是：", importance: "理想的面部特征对您有多重要？" },
+        { num: 5, text: "我理想的肌肉紧实度和线条是：", importance: "理想的肌肉紧实度和线条对您有多重要？" },
+        { num: 6, text: "我理想的身体比例是：", importance: "理想的身体比例对您有多重要？" },
+        { num: 7, text: "我理想的体重是：", importance: "理想体重对您有多重要？" },
+        { num: 8, text: "我理想的胸部大小是：", importance: "理想的胸部大小对您有多重要？" },
+        { num: 9, text: "我理想的体力/力量是：", importance: "理想的体力/力量对您有多重要？" },
+        { num: 10, text: "我理想的身体协调性是：", importance: "理想的身体协调性对您有多重要？" },
+        { num: 11, text: "我理想的整体外貌是：", importance: "理想的整体外貌对您有多重要？" }
+    ];
+
+    const optionsA = [
+        { score: 0, label: "和我完全一样" },
+        { score: 1, label: "和我几乎一样" },
+        { score: 2, label: "与我相差较大" },
+        { score: 3, label: "与我相差很大" }
+    ];
+
+    const optionsB = [
+        { score: 0, label: "不重要" },
+        { score: 1, label: "有点重要" },
+        { score: 2, label: "比较重要" },
+        { score: 3, label: "非常重要" }
+    ];
+
+    /* ========== 生成BIQ问卷trial ========== */
+    function createBIQTrial(questionData) {
+        let selectedA = null;
+        let selectedB = null;
+        
+        return {
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: function() {
+                let html = `
+                    <div class="biq-container">
+                        <h2 style="text-align: center; font-family: SimSun, 宋体, serif;">身体意象问卷 - 第 ${questionData.num} / 11 题</h2>
+                        
+                        <div class="biq-question">
+                            <h3>${questionData.num}A. ${questionData.text}</h3>
+                            <div class="biq-options" id="options-a">
+                `;
+                optionsA.forEach(opt => {
+                    html += `
+                        <div class="biq-option" data-question="a" data-score="${opt.score}">
+                            <div class="score">${opt.score}</div>
+                            <div class="label">${opt.label}</div>
+                        </div>
+                    `;
+                });
+                html += `
+                            </div>
+                        </div>
+                        
+                        <div class="biq-question">
+                            <h3>${questionData.num}B. ${questionData.importance}</h3>
+                            <div class="biq-options" id="options-b">
+                `;
+                optionsB.forEach(opt => {
+                    html += `
+                        <div class="biq-option" data-question="b" data-score="${opt.score}">
+                            <div class="score">${opt.score}</div>
+                            <div class="label">${opt.label}</div>
+                        </div>
+                    `;
+                });
+                html += `
+                            </div>
+                        </div>
+                        
+                        <p id="hint-text" style="text-align: center; margin-top: 30px; color: #666; font-family: SimSun, 宋体, serif;">
+                            请分别点击A和B的选项，两题都选完后按空格键继续
+                        </p>
+                    </div>
+                `;
+                return html;
+            },
+            choices: "NO_KEYS",
+            data: {
+                task: 'biq',
+                question_num: questionData.num,
+                question_text_a: questionData.text,
+                question_text_b: questionData.importance
+            },
+            on_load: function() {
+                selectedA = null;
+                selectedB = null;
+                
+                // 更新提示文字的函数
+                function updateHint() {
+                    const hintEl = document.getElementById('hint-text');
+                    if (selectedA !== null && selectedB !== null) {
+                        hintEl.textContent = '✓ 两题已选完，按空格键继续';
+                        hintEl.style.color = '#4CAF50';
+                        hintEl.style.fontWeight = 'bold';
+                    } else if (selectedA !== null) {
+                        hintEl.textContent = '已选A题，请继续选择B题';
+                        hintEl.style.color = '#666';
+                        hintEl.style.fontWeight = 'normal';
+                    } else if (selectedB !== null) {
+                        hintEl.textContent = '已选B题，请继续选择A题';
+                        hintEl.style.color = '#666';
+                        hintEl.style.fontWeight = 'normal';
+                    } else {
+                        hintEl.textContent = '请分别点击A和B的选项，两题都选完后按空格键继续';
+                        hintEl.style.color = '#666';
+                        hintEl.style.fontWeight = 'normal';
+                    }
+                }
+                
+                document.querySelectorAll('.biq-option').forEach(option => {
+                    option.addEventListener('click', function() {
+                        const question = this.dataset.question;
+                        const score = parseInt(this.dataset.score);
+                        
+                        document.querySelectorAll(`.biq-option[data-question="${question}"]`).forEach(opt => {
+                            opt.classList.remove('selected');
+                        });
+                        
+                        this.classList.add('selected');
+                        
+                        if (question === 'a') {
+                            selectedA = score;
+                        } else {
+                            selectedB = score;
+                        }
+                        
+                        updateHint();
+                    });
+                });
+                
+                // 监听空格键，只有两题都选完才能继续
+                document.addEventListener('keydown', function handler(e) {
+                    if (e.key === ' ' || e.code === 'Space') {
+                        e.preventDefault();
+                        if (selectedA !== null && selectedB !== null) {
+                            document.removeEventListener('keydown', handler);
+                            jsPsych.finishTrial({
+                                response_a: selectedA,
+                                response_b: selectedB
+                            });
+                        } else {
+                            // 提示用户需要选完两题
+                            const hintEl = document.getElementById('hint-text');
+                            hintEl.textContent = '⚠ 请先完成A和B两题的选择！';
+                            hintEl.style.color = '#f44336';
+                            hintEl.style.fontWeight = 'bold';
+                            setTimeout(updateHint, 1500);
+                        }
+                    }
+                });
+            },
+            on_finish: function(data) {
+                data.response_a = selectedA;
+                data.response_b = selectedB;
+            }
+        };
+    }
+
+    // 生成所有BIQ问卷trials
+    const biq_trials = biq_questions.map(q => createBIQTrial(q));
+
+    /* ========== 结束页面 ========== */
+    const end_screen = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <h2 style="font-family: SimSun, 宋体, serif;">实验结束</h2>
+            <p style="font-family: SimSun, 宋体, serif; font-size: 18px;">感谢您的参与！</p>
+            <p style="font-family: SimSun, 宋体, serif; font-size: 18px;">数据文件将自动下载，请保存到 data 文件夹。</p>
+        `,
+        choices: "NO_KEYS",
+        trial_duration: 5000
+    };
+
+    /* ========== 进入全屏 ========== */
+    const enter_fullscreen = {
+        type: jsPsychFullscreen,
+        fullscreen_mode: true,
+        message: `
+            <div style="font-family: SimSun, 宋体, serif; text-align: center;">
+                <h2>欢迎参加本次实验</h2>
+                <p style="font-size: 18px;">点击下方按钮进入全屏模式开始实验</p>
+            </div>
+        `,
+        button_label: '进入全屏并开始'
+    };
+
+    /* ========== 运行实验 ========== */
+    const timeline = [
+        enter_fullscreen,
+        preload,
+        intro_survey,
+        survey_complete,
+        picture1_screen,
+        rating_procedure,
+        picture2_screen,
+        phase2_loop,
+        picture5_screen,
+        ...biq_trials,
+        end_screen
+    ];
+
+    jsPsych.run(timeline);
+</script>
+</html>
